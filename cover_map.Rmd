@@ -23,6 +23,17 @@ library(sp)
 library(raster)
 ```
 
+```{r load_join crown_gps_data}
+
+
+# save(crown_tot, file="crown_tot.Rdata")
+```
+
+```{r select_cluster}
+
+```
+
+
 Taux de couverture
 La détermination du taux de couvert à l’échelle de la parcelle a consisté dans un premier temps à déterminer la surface de la couronne de chaque arbre présent dans la parcelle. Pour ce faire, nous avons déterminé d’abord les distances entre la position du tronc de l'arbre et 8 points situés tous à l'extrémité de la couronne de l’arbre suivant la direction des points cardinaux (N, NE, E, SE, S, SO, O, NO, figure 4). Le but est de déterminer les coordonnées Xi et Yi (latitude et longitude) de ces 8 points connaissant celles du tronc de l’arbre (X, Y) ainsi que la distance (r) entre ce dernier et chaque point via la formule : 
  
@@ -68,6 +79,8 @@ couronne_9 <- couronne %>%
   filter(type_plot == 9)
 couronne_10 <- couronne %>%
   filter(type_plot == 10)
+
+#### joindre crwon data avec gps_data
 
 #verifier si nos données contiennent des NA
 #which(is.na(couronne_9),arr.ind=TRUE)
