@@ -1,0 +1,198 @@
+---
+title: "OS2-2 Analyse de la Structure Spatiale des arbres associés dans les SAF cacao : carte de couvert"
+author: "Diabaté Mohamed & Aimé Kouassi"
+date: "`r format(Sys.time(), '%d %B,%Y')`"
+always_allow_html: true
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+    df_print: paged
+---
+
+```{r package, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE)
+library(here)
+library(tidyverse)
+library(gtools)
+library(knitr)
+library(kableExtra)
+library(funModeling)
+library(sf)
+library(sp)
+library(raster)
+```
+
+Taux de couverture
+La détermination du taux de couvert à l’échelle de la parcelle a consisté dans un premier temps à déterminer la surface de la couronne de chaque arbre présent dans la parcelle. Pour ce faire, nous avons déterminé d’abord les distances entre la position du tronc de l'arbre et 8 points situés tous à l'extrémité de la couronne de l’arbre suivant la direction des points cardinaux (N, NE, E, SE, S, SO, O, NO, figure 4). Le but est de déterminer les coordonnées Xi et Yi (latitude et longitude) de ces 8 points connaissant celles du tronc de l’arbre (X, Y) ainsi que la distance (r) entre ce dernier et chaque point via la formule : 
+ 
+Avec θ s’incrémentant de 45° d’un point cardinal à un autre.
+
+
+Ensuite le logiciel R a été utilisé via plusieurs packages de spatialisation pour créer un polygone (la projection au sol de la couronne) à partir des coordonnées des 8 points obtenues. Ce processus nous a ainsi permis de produire des cartes de couvert (figure 5) de la parcelle qui représentent. La projection au sol de la couronne de chacun des arbres à l’intérieur de la parcelle (Protocole de recherche, Aimé Kouassi).
+
+Enfin avec ImageJ (figure 6), un logiciel de traitement d’image, nous avons déterminé le taux de couverture à l’échelle de la parcelle en 2 étapes que nous déclinons dans ce qui suit.
+
+```{r cluster_cover_data, echo=FALSE}
+couronne=read.csv2(here::here("crown_data",  "couronne_aboisso.csv")) # aboisso_avecNA
+#conversion en numeric des chr
+couronne <- couronne %>% 
+     mutate_at(c(3:10), as.numeric)
+
+#supprimer les lignes avec des colonnes comportant toutes des na
+couronne <- subset(couronne, is.na(couronne$N_0) == FALSE) # si N_0=0 alors l'individu est sans obs
+
+couronne$NE_45 <- ifelse(is.na(couronne$NE_45)==TRUE,(couronne$N_0 + couronne$E_90)/2, couronne$NE_45)
+couronne$SE_135 <- ifelse(is.na(couronne$SE_135)==TRUE,(couronne$E_90 + couronne$S_180)/2, couronne$SE_135)
+couronne$SO_225 <- ifelse(is.na(couronne$SO_225)==TRUE,(couronne$S_180 + couronne$O_270)/2, couronne$SO_225)
+couronne$NO_315 <- ifelse(is.na(couronne$NO_315)==TRUE,(couronne$O_270 + couronne$N_0)/2, couronne$NO_315)
+
+### Donnees couronne par parcelle 
+couronne_1 <- couronne %>%
+  filter(type_plot == 1)
+couronne_2 <- couronne %>%
+  filter(type_plot == 2)
+couronne_3 <- couronne %>%
+  filter(type_plot == 3)
+couronne_4 <- couronne %>%
+  filter(type_plot == 4)
+couronne_5 <- couronne %>%
+  filter(type_plot == 5)
+couronne_6 <- couronne %>%
+  filter(type_plot == 6)
+couronne_7 <- couronne %>%
+  filter(type_plot == 7)
+couronne_8 <- couronne %>%
+  filter(type_plot == 8)
+couronne_9 <- couronne %>%
+  filter(type_plot == 9)
+couronne_10 <- couronne %>%
+  filter(type_plot == 10)
+
+#verifier si nos données contiennent des NA
+#which(is.na(couronne_9),arr.ind=TRUE)
+```
+
+Dans le cadre de notre étude, nous avons travaillé sur 145 parcelles car 5 (cinq) parcelles (Aboisso type 1, 9 et 10, et Adzopé type 5 et 8) présentaient des données insuffisantes (plus 5 arbres sans données GPS) sur les positions gps des arbres, des données nécessaires pour l’analyse de la structure horizontales.
+
+Aboisso 1 : 
+Aboisso 9 : 
+Aboisso 10 : 
+Adzopé 5  :
+Adzopé 8  : 
+
+
+```{r cluster_cover_map, echo=FALSE}
+### creation des shapes de couronnes :  # appel par iteration
+for (i in 2:8) {
+  gps <- read.csv2(here::here("gps_data", paste("gps_aboisso", ".csv", sep = as.character(i)))) # gps_aboisso
+  shp <- shapefile(here::here("shp_data", paste("shp_aboisso", ".shp", sep = as.character(i)))) # polygone_aboisso
+  plot_utm <- spTransform(shp, CRS("+proj=utm +zone=30 ellps=WGS84")) # spTransform du polygone
+  
+# conversion lonlat to numeric  
+  gps$lat <- as.numeric(gps$lat)
+  gps$lon <- as.numeric(gps$lon)
+  lonlat <- cbind(gps$lon, gps$lat)
+
+  coord_dec = SpatialPoints(lonlat, proj4string = CRS("+proj=longlat +datum=WGS84")) # transform gps lonlat to Spatial_data
+# lonlat convert to utm
+  coord_UTM <- spTransform(coord_dec, CRS("+proj=utm +zone=30 ellps=WGS84")) 
+  coord_UTM <- as.data.frame(coord_UTM) # as data.data.frame
+  
+#Liste contenant les couronnes de chaque parcelle à faire tourner dans la boucle
+  liste = list(couronne_1, couronne_2, couronne_3,couronne_4,couronne_5,
+               couronne_6,couronne_7,couronne_8,couronne_9,couronne_10)
+  
+  rayon_parcelle <- liste[[i]] # rayon des couronnes de la parcelle i
+  
+  POLYGONS <- list()
+  for (ligne in 1:nrow(coord_UTM)) { # ligne=arbre=individu, parcours les coord_utm (coordonée centrale) des arbres un à un
+ r <- rayon_parcelle[,-c(1:2)] # selection des couronnes uniquements
+ r <- cbind(r,r[,1]) # r[,1] # Rajout de N_0 pour terminer le polygone de la couronne
+
+ ## Determination des x,y de chacun des 8 points à partir des utm (longlat au depart)
+ 
+    coord.x<-list() # stock tous les x pour chacun des 8 points cardinaux à determiner
+    coord.y<-list() # stock tous les y pour chacun des 8 points cardinaux à determiner
+    for (colone in 1:8){
+      coord.x[colone] <- 
+        coord_UTM[ligne,][1]+r[ligne,][colone]*sin((colone-1)*(pi/4)) # Xi=X+rsin0, colone parcours les 8 rayons/distances de couronnes de chaque arbre; Apres quoi ligne parcours les coordonées centrales des arbres un à un
+      coord.y[colone] <- 
+        coord_UTM[ligne,][2]+r[ligne,][colone]*cos((colone-1)*(pi/4)) # Yi=Y+rcos0
+    }
+    
+## Convert x,y points to Spatialpoints 
+    POLYGON <- matrix(c(as.numeric(coord.x),as.numeric(coord.y)),ncol = 2) # 8 x,y as.numeric matrix or (cbind)
+    POLYGON <- SpatialPoints(POLYGON, proj4string = CRS("+proj=utm +zone=30 ellps=WGS84")) #8 x,y to spatial
+    
+    P1 <- Polygon(coords = POLYGON) # creation des polygone (couvert) de chacun des arbres à partir des 8 x,y determinés
+    
+    P2 <- Polygons(srl = list(P1), ID = paste("Polyg",ligne)) # creation ID de chaque polygone
+    
+    POLYGONS <- append(POLYGONS,P2) # liste pour stocker tous les couverts/polygones à l'echelle de la parcelle
+    
+  }
+  
+  group_cover <- SpatialPolygons(Srl = POLYGONS) # creation d'un objet spatial commun des couverts
+  
+   
+  ### (1) Parcelle : Carte à fond blanc de la parcelle i (colorée en noire) sans bordure save in plot_img folder 
+  
+  jpeg(file = paste("plot_img/aboisso_", ".jpeg", sep = as.character(i)), width = 507, height = 361) # cadre
+  plot(plot_utm, col = "black", border = F) # border=F : image en noire sans bordure
+  dev.off()
+  
+  ### (2) Couverts groupés : Carte à fond blanc des couverts groupés (colorée en noire) sans bordure save in cover_img folder 
+  
+  jpeg(file = paste("cover_img/aboisso_", ".jpeg", sep = as.character(i)), width = 507, height = 361) # cadre
+  plot(plot_utm, col = "white", border = F) # border=F plot sans bordure
+  plot(group_cover, col = "black", border = F, add=T) #¨couverts groupés sans bordures
+  dev.off()
+  
+### (3) Complete cover_map save in full_plot folder
+  
+   jpeg(file = paste("full_plot/cover_map_abs", ".jpeg", sep = as.character(i)), width = 507,      height = 361) # cadre
+   plot(plot_utm, col = "green", border = T, main = paste("absoisso_", "" , sep = as.character(i))) # border=F plot sans bordure; col=white for correct cover map
+   plot(group_cover, col = "black", border = F, add=T)
+   dev.off()
+}   
+```
+
+############################### TRAITEMENT IMAGEJ ######################################################
+
+Etape 1 
+Insertion dans le logiciel d’une carte à fond blanc de dimension connue et fixe. Ensuite nous y insérons une image de la parcelle colorée totalement en noir. Ce qui permet par la suite de déterminer la proportion de noir (parcelle) sur le fond blanc de la carte.
+
+Etape 2 
+L’étape suivante consiste à insérer une nouvelle carte à fond blanc avec les mêmes caractéristiques que la précédente sur laquelle la projection au sol des couronnes des arbres (comme expliqué précédemment) correspondant à la parcelle. L’on détermine ainsi la proportion de noir (couronnes) sur le fond blanc de la carte (figure 8). Enfin le rapport de la proportion de couronnes sur celle de la parcelle, nous donne le taux de couverture à l’échelle de la parcelle.
+
+```{r join_cover_plot, echo=FALSE}
+## upload plot_area files from result_img folder (output_imageJ)
+area_plot <- read.csv2(here::here("result_img", "145plot.csv"), sep = ",") # 145 plot output from imagej
+
+colnames(area_plot)[1]<-"plot_ID"
+colnames(area_plot)[5]<-"pct_area_plot"
+
+area_plot$plot_ID <- str_replace(area_plot$plot_ID, pattern = ".jpeg", "" ) # removed ".jpeg" in order to have a plot_ID
+
+## upload cover_area files from result_img folder (output_imageJ)
+area_cover <- read.csv2(here::here("result_img", "145cover.csv"), sep = ",") # 145 cover output from imagej
+
+colnames(area_cover)[1]<-"plot_ID"
+colnames(area_cover)[5]<-"pct_area_crown"
+
+area_cover$plot_ID <- str_replace(area_cover$plot_ID, pattern = ".jpeg", "" ) # removed ".jpeg" in order to have a plot_ID
+
+
+## Cover calculation : TC
+result_img <- area_plot %>% inner_join(area_cover, by = "plot_ID") %>% dplyr::select(plot_ID, pct_area_crown,pct_area_plot)
+
+result_img$pct_area_plot=as.numeric(result_img$pct_area_plot)
+result_img$pct_area_crown=as.numeric(result_img$pct_area_crown)
+
+result_img=result_img %>%
+  mutate(TC = (((100- pct_area_crown) /(100-pct_area_plot))*100))
+     
+```
+
+

@@ -1,0 +1,33 @@
+---
+title: "OS2-3 Analyse de la Structure Spatiale des arbres associés dans les SAF cacao : Structure verticale, Distribution des hauteurs"
+author: "Diabaté Mohamed & Aimé Kouassi"
+date: "`r format(Sys.time(), '%d %B,%Y')`"
+always_allow_html: true
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+    df_print: paged
+---
+
+```{r setup, include=TRUE, echo=FALSE}
+load(file = "data_spatV4.Rdata")
+boxp<-data_spat%>% dplyr::select(cluster_name, type_plot, h_totale)
+boxp %>% 
+  ggplot(aes(x=as.character(type_plot), y=h_totale, group=type_plot)) +
+  geom_boxplot() +
+  xlab("")+
+  ylab("")+
+  facet_wrap(~cluster_name, scales= "free") +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))
+```
+
+```{r histogramme_hauteurs, include=TRUE, echo=FALSE}
+hist(data_spat$h_totale, prob = TRUE, col = "skyblue",
+     main = "",
+     xlab = "Classes de hauteurs (cm)")
+```
+
+
+```{r resume_stat_tab, include=FALSE}
+```

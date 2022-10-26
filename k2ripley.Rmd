@@ -1,0 +1,75 @@
+---
+title: "OS1-1  Analyse de la Structure Spatiale des arbres associés dans les SAF cacao : K_Ripley"
+author: "Diabaté Mohamed & Aimé Kouassi"
+date: "`r format(Sys.time(), '%d %B,%Y')`"
+always_allow_html: true
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+    df_print: paged
+---
+
+```{r load package}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE)
+library(maptools)
+library(rgdal)
+library(tidyverse)
+library(here)
+library(spatstat)
+library(raster)
+library(ads)
+library(ggplotify)
+library(ggpubr)
+```
+
+
+```{r cluster_k_ripley}
+
+for (i in 1) {
+  #importation des gps
+  trees_location <- read.csv2(here::here("gps_data", paste("gps_ble", ".csv", sep = as.character(i))))
+  
+   #convert lontlat to utm by SpatialPoint
+  trees_location$lat <- as.numeric(trees_location$lat)
+  trees_location$lon <- as.numeric(trees_location$lon)
+  lonlat <- cbind(trees_location$lon, trees_location$lat)
+  coord_dec <- SpatialPoints(lonlat, proj4string = CRS("+proj=longlat +datum=WGS84"))
+  coord_UTM <- spTransform(coord_dec, CRS("+proj=utm +zone=30 ellps=WGS84"))
+  
+  #import shapefile and spatial polygon
+  shp <- shapefile(here::here("shp_data", paste("shp_ble", ".shp", sep = as.character(i))))
+  plot_utm <- spTransform(shp, CRS("+proj=utm +zone=30 ellps=WGS84"))
+  plot_utm <- as(plot_utm, "SpatialPolygons") 
+  #plot_utm <- SpatialPolygons(Srl = plot_utm)
+  
+###creation des points et fenetre avec spatstat
+  trees_ppp  <- as(coord_UTM, "ppp") # trees_location to spatstat object (ppp)
+  w_owin<- as(plot_utm, "owin") # owin object : support de projection de trees_location pour spastat
+  trees_ppp$window <- w_owin
+  
+  ## Afficher la carte de la parcelle avec les points
+  var <- paste("ble","", sep = as.character(i))
+  assign(var, as.grob(~plot(trees_ppp, main = "", pch=20, cex = 1))) # afficher la parcelle i 
+  
+  
+###creation des points et fenetre avec ads à partir de spastat
+  trees_spp <- ppp2spp(trees_ppp) ### spatstat (ppp) to ads (spp)
+  w_swin <- owin2swin(w_owin) # swin object : support de projection de trees_location pour ads
+  w_swin$window <- w_swin
+  
+
+  ## Distribution K_Ripley de la parcelle à partir de trees_ppp
+  k_var <- paste("k_ble","", sep = as.character(i))
+  assign(k_var, as.grob(~plot(kfun(trees_spp, upto = 25, by = 1, nsim = 1000), "L",
+                                  main = paste("ble","", sep = as.character(i)),
+                                  col = c("blue", "red", "black"), lwd = 2 )))
+
+
+}
+
+
+```
+
+ggarrange(ble1, k_ble1)
+

@@ -1,0 +1,192 @@
+---
+title: "OS3 Analyse de la Structure Spatiale des arbres associés dans les SAF cacao : K2Ripley"
+author: "Diabaté Mohamed & Aimé Kouassi"
+date: "`r format(Sys.time(), '%d %B,%Y')`"
+always_allow_html: true
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(spatstat)
+library(rgdal)
+library(raster)
+library(maptools)
+library(stringr)
+library(here)
+```
+
+# IDENTIFICATION DES PARCELLES SEMBLABLES
+
+```{r load database, include=TRUE, echo=FALSE}
+library(readxl)
+###importation des données : informations de chaque parcelle + k_ripley
+
+plot_abs=read_excel(here::here("plot_csv", "parcelle_aboisso.xlsx")) 
+plot_adz=read_excel(here::here("plot_csv", "parcelle_adzope.xlsx")) 
+plot_agk=read_excel(here::here("plot_csv", "parcelle_agnibilekrou.xlsx"))
+plot_azg=read_excel(here::here("plot_csv", "parcelle_azaguie.xlsx"))
+plot_bkm=read_excel(here::here("plot_csv", "parcelle_biankouma.xlsx"))
+plot_ble=read_excel(here::here("plot_csv", "parcelle_ble.xlsx"))
+plot_bon=read_excel(here::here("plot_csv", "parcelle_bonon.xlsx"))
+plot_fre=read_excel(here::here("plot_csv", "parcelle_fresco.xlsx"))
+plot_bry=read_excel(here::here("plot_csv", "parcelle_grdbereby.xlsx"))
+plot_gyo=read_excel(here::here("plot_csv", "parcelle_gueyo.xlsx"))
+plot_gbr=read_excel(here::here("plot_csv", "parcelle_guiberoua.xlsx"))
+plot_glo=read_excel(here::here("plot_csv", "parcelle_guiglo.xlsx"))
+plot_mea=read_excel(here::here("plot_csv", "parcelle_meagui.xlsx"))
+plot_sp=read_excel(here::here("plot_csv", "parcelle_sanpedro.xlsx"))
+plot_sbr=read_excel(here::here("plot_csv", "parcelle_soubre.xlsx"))
+
+plot_tot<-rbind(plot_abs,plot_adz,plot_agk,plot_azg,plot_bkm,plot_ble,plot_bon,plot_fre,plot_bry,plot_gyo,plot_gbr,plot_glo,plot_mea,plot_sp,plot_sbr)
+
+plot_infos<-  plot_tot %>% left_join(result_img, by = "plot_ID") # plot informations : cover infos  + plot_tot
+
+plot_infos$type_plot=as.factor(plot_infos$type_plot) # type_plot as factor
+plot_infos$k_ripley=as.factor(plot_infos$k_ripley) # k_ripley as factor
+
+#plot_infos$dateJ<-julian(strptime(plot_infos$date, "%d/%m/%Y"))
+#conversion en numeric des chr
+#couronne <- couronne %>% 
+ #    mutate_at(c(3:10), as.numeric)
+```
+
+```{r rdt_threa, include=TRUE, echo=FALSE}
+#### Define cocoa yield treatshold per type_plot
+plot_infos = plot_infos %>%
+   mutate(rdt_threa =case_when(type_plot == "1" ~ "low",
+                                type_plot == "2" ~ "high",
+                                type_plot == "3" ~ "low",
+                                type_plot == "4" ~ "low",
+                                type_plot == "5" ~ "high",
+                                type_plot == "6" ~ "high",
+                                type_plot == "7" ~ "low",
+                                type_plot == "8" ~ "high",
+                                plot_infos$type_plot == 9 & plot_infos$rdt_cacao > 300 ~ "high",
+                                plot_infos$type_plot == 9 & plot_infos$rdt_cacao < 300 ~ "low", 
+                                plot_infos$type_plot == 10 & plot_infos$rdt_cacao > 300 ~ "high",
+                                plot_infos$type_plot == 10 & plot_infos$rdt_cacao < 300 ~ "low", 
+                              
+   ))
+plot_infos$rdt_threa=as.factor(plot_infos$rdt_threa) # plot_infos as factor
+
+## Type 9 and 10 case
+#plot_infos$rdt_threa=ifelse(plot_infos$rdt_cacao > 300 & plot_infos$type_plot == 9, "high", "low")
+#plot_infos$rdt_threa=ifelse(plot_infos$rdt_cacao > 300 && plot_infos$type_plot == 10, "high", "low")
+```
+
+```{r relugar_plot, include=TRUE, echo=FALSE}
+#cover < 10%
+reg_low_cover <- plot_infos%>% filter(k_ripley == 0 & TC < 10)
+
+# 10% < cover < 30%
+reg_good_cover <- plot_infos %>% filter(k_ripley == 0 & 10< TC & TC<30)
+
+# cover > 30%
+reg_high_cover <- plot_infos %>% filter(k_ripley == 0 & TC > 30)
+```
+
+```{r random_plot, include=TRUE, echo=FALSE}
+# ALEATOIRES###
+#cover < 10%
+random_low_cover <- plot_infos %>% filter(k_ripley == 1 & TC < 10)
+
+# 10% < cover < 30%
+random_good_cover <- plot_infos %>%
+  filter(k_ripley == 1 & 10<TC & TC<30)
+
+# cover > 30%
+random_high_cover <- plot_infos %>% filter(k_ripley ==1 & TC>30)
+```
+
+```{r aggregate_plot, include=TRUE, echo=FALSE}
+aggr_plot <- plot_infos%>% filter(k_ripley == 2)
+```
+
+# DETERMINATION DE LA DISTANCE MINIMALE
+
+```{r select_group_Hrdt, include=TRUE, echo=FALSE}
+###selection des parcelles regulieres + bon couvert + bon rendement
+reg_Gcover_Hrdt <- as.data.frame(reg_good_cover %>% filter(rdt_threa == "high"))
+
+
+###selection des parcelles aleatoires + bon couvert + bon rendement
+ran_Gcover_Hrdt <- as.data.frame(random_good_cover %>% filter(rdt_threa == "high"))
+```
+
+
+```{r regular_dist_min, include=TRUE, echo=FALSE}
+reg_Gcover_Hrdt$gps <- paste("gps_", reg_Gcover_Hrdt$cluster_name,reg_Gcover_Hrdt$type_plot, ".csv", sep = "")
+#compteur0 <- str_to_title(alea_cover[,2])
+
+compteur <- reg_Gcover_Hrdt[,"gps"]
+#compteur[2]
+liste_dist <- list() #clear list=stock dist_moy par parcelle
+for (i in 1:length(compteur)) {
+  trees_coord <- read.csv2(here::here("gps_data", compteur[[i]]))
+  
+  #select lon and lat
+  trees_coord$lat <- as.numeric(trees_coord$lat)
+  trees_coord$lon <- as.numeric(trees_coord$lon)
+  lonlat <- cbind(trees_coord$lon, trees_coord$lat)
+  
+  #convert lontal to SpatialPoint, then to utm system
+  coord_dec <- SpatialPoints(lonlat, proj4string = CRS("+proj=longlat +datum=WGS84"))
+  coord_UTM <- spTransform(coord_dec, CRS("+proj=utm +zone=29 ellps=WGS84"))
+  
+
+  # Calcul de distance moyenne de chaque arbre avec son voisin le plus proche au sein la parcelle
+  
+  P  <- as(coord_UTM, "ppp") # coord utm to spatstat object
+  dist <- mean(nndist(P, k=1)) # dist_moy par parcelle, k=1 pour 1 voisin plus proche 
+  liste_dist <- rbind(liste_dist, dist) # add dist_moy to list (vide)
+  
+}
+
+liste_dist <- as.data.frame.numeric(liste_dist)
+liste_dist$liste_dist<-as.numeric(liste_dist$liste_dist)
+summary(liste_dist)
+#sd(liste_dist$liste_dist)
+```
+
+```{r random_dist_min, include=TRUE, echo=FALSE}
+ran_Gcover_Hrdt$gps <- paste("gps_", ran_Gcover_Hrdt$cluster_name,ran_Gcover_Hrdt$type_plot, ".csv", sep = "")
+#compteur0 <- str_to_title(alea_cover[,2])
+
+compteur <- ran_Gcover_Hrdt[,"gps"]
+#compteur[2]
+liste_dist <- list() #clear list=stock dist_moy par parcelle
+for (i in 1 : length(compteur)) {
+  trees_coord <- read.csv2(here::here("gps_data", compteur[[i]]))
+  
+  #select lon and lat
+  trees_coord$lat <- as.numeric(trees_coord$lat)
+  trees_coord$lon <- as.numeric(trees_coord$lon)
+  lonlat <- cbind(trees_coord$lon, trees_coord$lat)
+  
+  #convert lontal to SpatialPoint, then to utm system
+  coord_dec <- SpatialPoints(lonlat, proj4string = CRS("+proj=longlat +datum=WGS84"))
+  coord_UTM <- spTransform(coord_dec, CRS("+proj=utm +zone=29 ellps=WGS84"))
+  
+
+  # Calcul de distance moyenne de chaque arbre avec son voisin le plus proche au sein la parcelle
+  
+  P  <- as(coord_UTM, "ppp") # coord utm to spatstat object
+  dist <- mean(nndist(P, k=1)) # dist_moy par parcelle, k=1 pour 1 voisin plus proche 
+  liste_dist <- rbind(liste_dist, dist) # add dist_moy to list (vide)
+  
+}
+
+liste_dist <- as.data.frame.numeric(liste_dist)
+liste_dist$liste_dist<-as.numeric(liste_dist$liste_dist)
+summary(liste_dist)
+
+#nndist(P, k=1) # Check by plot
+```
+
